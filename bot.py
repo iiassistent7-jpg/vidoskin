@@ -223,13 +223,16 @@ async def start_production(update: Update, brief: str, user_id: int):
     )
 
 
-async def show_design(update: Update, user_id: int):
+async def show_design(obj, user_id: int):
     """Step 2: Generate visual design document"""
     state = get_state(user_id)
     state["mode"] = "awaiting_design_approval"
 
-    await update.effective_message.reply_text("Разрабатываю визуальный стиль... 🎨")
-    await update.effective_message.chat.send_action(ChatAction.TYPING)
+    # obj can be Update or CallbackQuery
+    msg = obj.message if hasattr(obj, 'message') and not hasattr(obj, 'effective_message') else obj.effective_message
+
+    await msg.reply_text("Разрабатываю визуальный стиль... 🎨")
+    await msg.chat.send_action(ChatAction.TYPING)
 
     design = await claude_call(
         [{"role": "user", "content": f"Создай визуальный дизайн для видео: {state['brief']}\n\nСценарий: {state['scenario']}"}],
@@ -243,24 +246,26 @@ async def show_design(update: Update, user_id: int):
         [InlineKeyboardButton("✅ Отлично, начинаем съёмку!", callback_data="approve_design")],
         [InlineKeyboardButton("✏️ Изменить стиль", callback_data="edit_design")],
     ]
-    await send(update,
-        f"Визуальный стиль 🎨\n\n{design}\n\nВсё ок? Или хочешь что-то изменить?",
+    await msg.reply_text(
+        strip_md(f"Визуальный стиль 🎨\n\n{design}\n\nВсё ок? Или хочешь что-то изменить?"),
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-async def show_scene(update: Update, user_id: int):
+async def show_scene(obj, user_id: int):
     """Step 3+: Show current scene and offer to generate video"""
     state = get_state(user_id)
     scenes = state.get("scenes", [])
     current = state.get("current_scene", 0)
 
     if current >= len(scenes):
-        await wrap_up(update, user_id)
+        await wrap_up(obj, user_id)
         return
 
     scene = scenes[current]
     state["mode"] = "awaiting_scene_approval"
+
+    msg = obj.message if hasattr(obj, 'message') and not hasattr(obj, 'effective_message') else obj.effective_message
 
     keyboard = [
         [InlineKeyboardButton("🎥 Генерировать эту сцену", callback_data="gen_scene")],
@@ -268,13 +273,15 @@ async def show_scene(update: Update, user_id: int):
         [InlineKeyboardButton("⏭ Пропустить сцену", callback_data="skip_scene")],
     ]
 
-    await send(update,
-        f"Сцена {current + 1} из {len(scenes)} 🎬\n\n"
-        f"{scene['description']}\n\n"
-        f"———\n"
-        f"📝 ТЕКСТ НА ЭКРАНЕ:\n{scene.get('text_overlay', '—')}\n\n"
-        f"🎙 ОЗВУЧКА:\n{scene.get('voiceover', '—')}\n\n"
-        f"Генерируем эту сцену или сначала внесёшь правки?",
+    await msg.reply_text(
+        strip_md(
+            f"Сцена {current + 1} из {len(scenes)} 🎬\n\n"
+            f"{scene['description']}\n\n"
+            f"———\n"
+            f"📝 ТЕКСТ НА ЭКРАНЕ:\n{scene.get('text_overlay', '—')}\n\n"
+            f"🎙 ОЗВУЧКА:\n{scene.get('voiceover', '—')}\n\n"
+            f"Генерируем эту сцену или сначала внесёшь правки?"
+        ),
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -314,7 +321,7 @@ async def parse_scenes(scenario: str) -> list:
         return []
 
 
-async def generate_scene_video(update: Update, user_id: int):
+async def generate_scene_video(obj, user_id: int):
     """Generate video for current scene"""
     state = get_state(user_id)
     scenes = state.get("scenes", [])
@@ -322,7 +329,8 @@ async def generate_scene_video(update: Update, user_id: int):
     scene = scenes[current]
     design = state.get("design", "")
 
-    await update.effective_message.reply_text("Генерирую сцену... 1-3 минуты, не закрывай чат ⏳🎬")
+    msg = obj.message if hasattr(obj, 'message') and not hasattr(obj, 'effective_message') else obj.effective_message
+    await msg.reply_text("Генерирую сцену... 1-3 минуты, не закрывай чат ⏳🎬")
 
     # Build prompt from scene + design
     prompt_input = f"Scene: {scene['description']}\nVisual style: {design[:300]}"
@@ -343,19 +351,21 @@ async def generate_scene_video(update: Update, user_id: int):
             [InlineKeyboardButton("✏️ Изменить и перегенерировать", callback_data="edit_regen_scene")],
         ]
 
-        await update.effective_message.reply_video(
+        await msg.reply_video(
             url,
-            caption=f"Сцена {current + 1} готова! 🎬\n\n"
-                    f"📝 Текст на экране: {scene.get('text_overlay','—')}\n"
-                    f"🎙 Озвучка: {scene.get('voiceover','—')}",
+            caption=strip_md(
+                f"Сцена {current + 1} готова! 🎬\n\n"
+                f"📝 Текст на экране: {scene.get('text_overlay','—')}\n"
+                f"🎙 Озвучка: {scene.get('voiceover','—')}"
+            ),
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         state["last_video_prompt"] = video_prompt
     except Exception as e:
-        await update.effective_message.reply_text(f"Ошибка генерации: {e}\n\nПопробуем ещё раз?")
+        await msg.reply_text(f"Ошибка генерации: {e}\n\nПопробуем ещё раз?")
 
 
-async def wrap_up(update: Update, user_id: int):
+async def wrap_up(obj, user_id: int):
     """All scenes done"""
     state = get_state(user_id)
     scenario = state.get("scenario", "")
@@ -376,12 +386,15 @@ async def wrap_up(update: Update, user_id: int):
         [InlineKeyboardButton("💡 Придумать идею", callback_data="idea")],
     ]
 
-    await send(update,
-        "Все сцены готовы! 🎉\n\n"
-        "Теперь у тебя есть все клипы для монтажа.\n\n"
-        f"#️⃣ Хэштеги: {hashtags}\n\n"
-        f"🎵 Музыка: {music}\n\n"
-        "Удачного монтажа! Если нужно переснять какую-то сцену — просто скажи 💪",
+    msg = obj.message if hasattr(obj, 'message') and not hasattr(obj, 'effective_message') else obj.effective_message
+    await msg.reply_text(
+        strip_md(
+            "Все сцены готовы! 🎉\n\n"
+            "Теперь у тебя есть все клипы для монтажа.\n\n"
+            f"#️⃣ Хэштеги: {hashtags}\n\n"
+            f"🎵 Музыка: {music}\n\n"
+            "Удачного монтажа! Если нужно переснять какую-то сцену — просто скажи 💪"
+        ),
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -476,10 +489,12 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         state["scenes"] = scenes
         state["current_scene"] = 0
-        await send(query,
-            f"Отлично! Сценарий разбит на {len(scenes)} сцен.\n\n"
-            f"Буду присылать каждую сцену с описанием, текстом и озвучкой — ты решаешь генерировать или нет.\n\n"
-            f"Поехали! 🚀"
+        await query.message.reply_text(
+            strip_md(
+                f"Отлично! Сценарий разбит на {len(scenes)} сцен.\n\n"
+                f"Буду присылать каждую сцену с описанием, текстом и озвучкой — ты решаешь генерировать или нет.\n\n"
+                f"Поехали! 🚀"
+            )
         )
         await show_scene(query, user_id)
 
