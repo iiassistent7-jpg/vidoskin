@@ -361,6 +361,77 @@ async def parse_scenes(scenario: str) -> list:
         return []
 
 
+async def generate_video_with_updates(msg, prompt: str, ratio: str = "9:16") -> str:
+    """Generate video and send periodic status updates to keep user informed"""
+    MODEL = "fal-ai/kling-video/v1.6/standard/text-to-video"
+    headers = {"Content-Type": "application/json", "Authorization": f"Key {FAL_KEY}"}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"https://queue.fal.run/{MODEL}",
+            headers=headers,
+            json={"prompt": prompt, "duration": "5", "aspect_ratio": ratio}
+        ) as resp:
+            if not resp.ok:
+                body = await resp.text()
+                raise Exception(f"Submit failed {resp.status}: {body[:200]}")
+            data = await resp.json(content_type=None)
+            request_id = data.get("request_id")
+            response_url = data.get("response_url", "")
+            status_url = data.get("status_url", f"https://queue.fal.run/{MODEL}/requests/{request_id}/status")
+            logger.info(f"Video job submitted: {request_id}")
+
+        updates_sent = 0
+        for attempt in range(80):
+            await asyncio.sleep(5)
+
+            # Send keepalive every ~30 seconds
+            if attempt > 0 and attempt % 6 == 0:
+                minutes = (attempt * 5) // 60
+                seconds = (attempt * 5) % 60
+                updates_sent += 1
+                try:
+                    await msg.reply_text(f"Kling AI обрабатывает... {minutes}м {seconds}с ⏳")
+                except Exception:
+                    pass
+
+            try:
+                async with session.get(status_url, headers={"Authorization": f"Key {FAL_KEY}"}) as poll:
+                    poll_text = await poll.text()
+                    try:
+                        result = json.loads(poll_text)
+                    except Exception:
+                        logger.warning(f"Non-JSON #{attempt}: {poll_text[:100]}")
+                        continue
+
+                    status = result.get("status", "")
+                    logger.info(f"Status #{attempt}: {status}")
+
+                    if status == "COMPLETED":
+                        result_url = response_url or f"https://queue.fal.run/{MODEL}/requests/{request_id}"
+                        async with session.get(result_url, headers={"Authorization": f"Key {FAL_KEY}"}) as res:
+                            final = json.loads(await res.text())
+                            video_url = (
+                                final.get("video", {}).get("url") or
+                                (final.get("videos") or [{}])[0].get("url") or
+                                final.get("url", "")
+                            )
+                            if video_url:
+                                return video_url
+                            raise Exception(f"No video URL: {str(final)[:200]}")
+
+                    if status in ("FAILED", "ERROR"):
+                        raise Exception(f"Kling AI: {result.get('error', 'generation failed')}")
+
+            except Exception as e:
+                if any(x in str(e) for x in ["failed", "No video", "FAILED", "Kling"]):
+                    raise
+                logger.warning(f"Poll error #{attempt}: {e}")
+                continue
+
+    raise Exception("Время ожидания истекло (6 минут)")
+
+
 async def generate_scene_video(obj, user_id: int):
     """Generate video for current scene"""
     state = get_state(user_id)
@@ -370,23 +441,26 @@ async def generate_scene_video(obj, user_id: int):
     design = state.get("design", "")
 
     msg = obj.message if hasattr(obj, 'message') and not hasattr(obj, 'effective_message') else obj.effective_message
-    await msg.reply_text("Генерирую сцену... 1-3 минуты, не закрывай чат ⏳🎬")
+    await msg.reply_text("Генерирую промпт для сцены... ✍️")
 
     # Build prompt from scene + design
     prompt_input = f"Scene: {scene['description']}\nVisual style: {design[:300]}"
-
     video_prompt = await claude_call(
         [{"role": "user", "content": prompt_input}],
         VIDEO_PROMPT_SYSTEM,
         max_tokens=150
     )
+    logger.info(f"Video prompt: {video_prompt}")
+
+    await msg.reply_text(f"Промпт готов. Отправляю в Kling AI... ⏳\n\n_{video_prompt[:100]}_")
 
     try:
         ratio = state.get("ratio", "9:16")
-        url = await generate_video(video_prompt, ratio=ratio)
+        # Run generation with periodic keepalive messages
+        url = await generate_video_with_updates(msg, video_prompt, ratio)
 
         keyboard = [
-            [InlineKeyboardButton("✅ Отлично, следующая сцена!", callback_data="next_scene")],
+            [InlineKeyboardButton("✅ Следующая сцена!", callback_data="next_scene")],
             [InlineKeyboardButton("🔄 Перегенерировать", callback_data="regen_scene")],
             [InlineKeyboardButton("✏️ Изменить и перегенерировать", callback_data="edit_regen_scene")],
         ]
@@ -402,7 +476,8 @@ async def generate_scene_video(obj, user_id: int):
         )
         state["last_video_prompt"] = video_prompt
     except Exception as e:
-        await msg.reply_text(f"Ошибка генерации: {e}\n\nПопробуем ещё раз?")
+        logger.error(f"Video generation error: {e}")
+        await msg.reply_text(f"Ошибка генерации: {e}\n\nПопробуй ещё раз.")
 
 
 async def wrap_up(obj, user_id: int):
@@ -711,6 +786,17 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await process_message(update, ctx, update.effective_user.id, update.message.text)
 
 
+async def error_handler(update, context):
+    """Silently ignore Conflict errors on startup"""
+    from telegram.error import Conflict, NetworkError
+    if isinstance(context.error, Conflict):
+        logger.warning("Startup conflict resolved, continuing...")
+        return
+    if isinstance(context.error, NetworkError):
+        return
+    logger.error(f"Update error: {context.error}")
+
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
@@ -718,9 +804,9 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    app.add_error_handler(error_handler)
     logger.info("GLAM AI Bot started!")
 
-    # drop_pending_updates clears queue on start, allowed_updates reduces noise
     app.run_polling(
         drop_pending_updates=True,
         allowed_updates=["message", "callback_query"]
