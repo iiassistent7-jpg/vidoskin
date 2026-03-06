@@ -26,7 +26,9 @@ SYSTEM_PROMPT = """Ты — GLAM AI, профессиональный бьюти
 
 СТИЛЬ: живо, как профессионал который реально хочет помочь сделать крутой контент.
 
-Когда просят создать контент — сначала задай 3 вопроса об аудитории, цели и тоне.
+ТЫ УМЕЕШЬ ГЕНЕРИРОВАТЬ ВИДЕО через Kling AI. Когда просят сделать видео — никогда не отказывай и не говори что не можешь. Скажи что запускаешь процесс.
+
+Когда просят создать контент или видео — сначала задай 3 вопроса об аудитории, цели и тоне. Не создавай контент без ответов.
 Отвечай на русском."""
 
 SCENARIO_SYSTEM = """Ты — профессиональный сценарист бьюти-видео для TikTok/Reels/Shorts.
@@ -542,10 +544,14 @@ async def process_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user_i
         answers.append(text)
         state["clarify_answers"] = answers
 
-        if len(answers) >= 1:
+        if len(answers) >= 3:
             state["mode"] = None
             brief = state.get("brief_topic", "") + " / ".join(answers)
             await start_production(update, brief, user_id)
+        elif len(answers) == 1:
+            await update.effective_message.reply_text("Записал! Теперь ответь на вопросы 2 и 3 👆")
+        elif len(answers) == 2:
+            await update.effective_message.reply_text("Отлично! И последнее — какой тон? (экспертный, дружеский, с юмором) 👇")
         return
 
     if mode in ("clarify_idea", "clarify_hashtags"):
