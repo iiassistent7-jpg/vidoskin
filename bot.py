@@ -177,7 +177,7 @@ async def generate_video(prompt: str, ratio: str = "9:16") -> str:
             logger.info(f"Submitted video job {request_id}")
 
         # Poll status
-        for attempt in range(80):
+        for attempt in range(120):  # 10 minutes max
             await asyncio.sleep(5)
             try:
                 async with session.get(status_url, headers={"Authorization": f"Key {FAL_KEY}"}) as poll:
@@ -382,58 +382,57 @@ async def generate_video_with_updates(msg, prompt: str, ratio: str = "9:16") -> 
             logger.info(f"Video job submitted: {request_id}")
 
         updates_sent = 0
-        for attempt in range(80):
+        for attempt in range(120):  # 10 minutes max
             await asyncio.sleep(5)
 
-            # Send keepalive every ~30 seconds
-            if attempt > 0 and attempt % 6 == 0:
+            # Send keepalive every 60 seconds
+            if attempt > 0 and attempt % 12 == 0:
                 minutes = (attempt * 5) // 60
-                seconds = (attempt * 5) % 60
-                updates_sent += 1
                 try:
-                    await msg.reply_text(f"Kling AI обрабатывает... {minutes}м {seconds}с ⏳")
+                    await msg.reply_text(f"Kling AI обрабатывает... {minutes} мин ⏳")
                 except Exception:
                     pass
 
             try:
                 async with session.get(status_url, headers={"Authorization": f"Key {FAL_KEY}"}) as poll:
                     poll_text = await poll.text()
+                    # Parse status response
                     try:
-                        result = json.loads(poll_text)
-                    except Exception:
-                        logger.warning(f"Non-JSON #{attempt}: {poll_text[:100]}")
+                        result = json.loads(poll_text.strip())
+                    except Exception as parse_err:
+                        logger.error(f"PARSE FAIL #{attempt} err={parse_err} len={len(poll_text)} repr={repr(poll_text[:300])}")
                         continue
 
                     status = result.get("status", "")
                     logger.info(f"Status #{attempt}: {status}")
 
                     if status == "COMPLETED":
-                        # Try response_url from status, then from initial submit, then construct
+                        # fal returns response_url in status response - use it directly
                         res_url = (
                             result.get("response_url") or
                             response_url or
                             f"https://queue.fal.run/{MODEL}/requests/{request_id}"
                         )
-                        logger.info(f"Fetching result from: {res_url}")
+                        logger.info(f"Fetching result: {res_url}")
                         async with session.get(res_url, headers={"Authorization": f"Key {FAL_KEY}"}) as res:
-                            final_text = await res.text()
-                            logger.info(f"Result response: {final_text[:300]}")
+                            final_text = (await res.text()).strip()
+                            logger.info(f"Result: {final_text[:400]}")
                             try:
                                 final = json.loads(final_text)
                             except Exception:
                                 raise Exception(f"Result not JSON: {final_text[:200]}")
                             video_url = (
-                                final.get("video", {}).get("url") or
-                                (final.get("videos") or [{}])[0].get("url") or
+                                (final.get("video") or {}).get("url") or
+                                ((final.get("videos") or [{}])[0] or {}).get("url") or
                                 final.get("url", "")
                             )
                             if video_url:
-                                logger.info(f"Got video URL: {video_url[:80]}")
+                                logger.info(f"Video URL: {video_url[:100]}")
                                 return video_url
-                            raise Exception(f"No video URL in: {str(final)[:300]}")
+                            raise Exception(f"No URL in response: {final_text[:400]}")
 
                     if status in ("FAILED", "ERROR"):
-                        raise Exception(f"Kling AI: {result.get('error', 'generation failed')}")
+                        raise Exception(f"Kling AI failed: {result.get('error', 'unknown')}")
 
             except Exception as e:
                 if any(x in str(e) for x in ["failed", "No video", "FAILED", "Kling"]):
