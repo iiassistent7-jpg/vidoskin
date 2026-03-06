@@ -665,7 +665,21 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     logger.info("GLAM AI Bot started!")
-    app.run_polling()
+
+    webhook_url = os.environ.get("WEBHOOK_URL", "")
+    port = int(os.environ.get("PORT", 8443))
+
+    if webhook_url:
+        # Webhook mode — no Conflict errors
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            webhook_url=webhook_url,
+            drop_pending_updates=True,
+        )
+    else:
+        # Fallback to polling for local dev
+        app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
