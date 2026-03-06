@@ -670,7 +670,10 @@ def main():
     port = int(os.environ.get("PORT", 8443))
 
     if webhook_url:
-        # Webhook mode — no Conflict errors
+        # Ensure https:// prefix
+        if not webhook_url.startswith("http"):
+            webhook_url = "https://" + webhook_url
+        logger.info(f"Starting webhook on {webhook_url}")
         app.run_webhook(
             listen="0.0.0.0",
             port=port,
