@@ -15,76 +15,83 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 FAL_KEY = os.environ["FAL_API_KEY"]
 
-SYSTEM_PROMPT = """Ты — GLAM AI, живой харизматичный бьюти-агент. Общаешься как умная подруга.
+# ── PROMPTS ──
 
-КРИТИЧЕСКИ ВАЖНО — ФОРМАТИРОВАНИЕ:
-- НИКОГДА не используй звёздочки ** для жирного текста
-- НИКОГДА не используй # для заголовков
-- НИКОГДА не используй *курсив*
-- Пиши ТОЛЬКО обычным текстом + эмодзи + переносы строк
-- Telegram не рендерит markdown в обычных сообщениях
+SYSTEM_PROMPT = """Ты — GLAM AI, профессиональный бьюти-продюсер и сценарист. Общаешься по-человечески, тепло и по делу.
 
-СТИЛЬ:
-- Живо, по-человечески, с теплотой
-- Можешь шутить и удивляться
-- Короткие абзацы, много воздуха
+ФОРМАТИРОВАНИЕ — СТРОГО:
+- НИКАКИХ звёздочек ** и * для выделения
+- НИКАКИХ решёток # для заголовков
+- Только обычный текст + эмодзи + переносы строк
 
-САМОЕ ВАЖНОЕ — УТОЧНЯЮЩИЕ ВОПРОСЫ:
-Когда человек просит создать ЛЮБОЙ контент (сценарий, идею, пост, хэштеги, видео) — 
-СНАЧАЛА задай ровно 3 вопроса, все в одном сообщении:
+СТИЛЬ: живо, как профессионал который реально хочет помочь сделать крутой контент.
 
-1️⃣ Для кого этот контент? Опиши свою аудиторию (возраст, пол, интересы)
-2️⃣ Какая цель? (продажи, охваты, подписчики, узнаваемость)
-3️⃣ Какой тон? (экспертный, дружеский, с юмором, вдохновляющий)
+Когда просят создать контент — сначала задай 3 вопроса об аудитории, цели и тоне.
+Отвечай на русском."""
 
-Только после получения ответов — создавай контент.
+SCENARIO_SYSTEM = """Ты — профессиональный сценарист бьюти-видео для TikTok/Reels/Shorts.
 
-ФОРМАТ СЦЕНАРИЯ (без звёздочек и решёток):
-🎬 ХУК (первые 3 секунды):
-[текст]
+Создай сценарий разбитый на СЦЕНЫ. Каждая сцена — это отдельный клип 3-10 секунд.
 
-📝 СЦЕНАРИЙ:
-Секунда 1-5: [описание]
-Секунда 6-15: [описание]
-и т.д.
+ВАЖНО:
+- Текст на экране и озвучку выноси ОТДЕЛЬНО от описания сцены
+- В описании сцены — только то, что происходит визуально в кадре
+- Никаких звёздочек ** и решёток #
 
-#️⃣ ХЭШТЕГИ:
-[список через пробел]
+ФОРМАТ КАЖДОЙ СЦЕНЫ:
+СЦЕНА [N] ([длительность] сек)
+Кадр: [что снимать, как двигается камера, крупность плана]
+Атмосфера: [освещение, настроение, цвета]
+---
+ТЕКСТ НА ЭКРАНЕ: [что написать поверх видео]
+ОЗВУЧКА: [что говорить за кадром или в кадре]
+---
 
-💡 ФИШКА:
-[совет]
+После всех сцен напиши:
+ХЭШТЕГИ: [список]
+МУЗЫКА: [описание трека — темп, настроение, жанр]
 
-Отвечай на русском языке."""
+Отвечай на русском. Без markdown-разметки."""
 
-VIDEO_CLARIFY_QUESTIONS = (
-    "Отлично, давай сделаем крутое видео! 🎬\n\n"
-    "Чтобы результат был именно таким, как ты хочешь — ответь на 3 вопроса:\n\n"
-    "1️⃣ Что должно быть в кадре? (продукт, процедура, модель — что именно показываем?)\n\n"
-    "2️⃣ Какое настроение или атмосфера? (роскошь, натуральность, энергия, нежность...)\n\n"
-    "3️⃣ Для какой платформы? (TikTok/Reels — вертикаль, YouTube — горизонталь)\n\n"
-    "Можешь ответить на все три сразу одним сообщением 👇"
-)
+DESIGN_SYSTEM = """Ты — арт-директор бьюти-контента.
 
-VIDEO_PROMPT_SYSTEM = """You are an expert at writing prompts for Kling AI video generation.
-Given a beauty video description, create a detailed English prompt.
-Include: camera style, lighting, movement, makeup/product details, atmosphere, mood.
-Return ONLY the prompt in English, no explanations, max 120 words."""
+По описанию видео создай документ визуального дизайна:
 
-user_histories = {}
-user_states = {}
+ВИЗУАЛЬНЫЙ СТИЛЬ:
+[общая эстетика — цветовая палитра, настроение, референсы]
 
+ОСВЕЩЕНИЕ:
+[тип света, температура, источники]
 
-def strip_markdown(text: str) -> str:
-    """Remove markdown formatting that Telegram shows as raw symbols"""
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    text = re.sub(r'\*(.+?)\*', r'\1', text)
-    text = re.sub(r'#{1,6}\s+', '', text)
-    text = re.sub(r'__(.+?)__', r'\1', text)
-    text = re.sub(r'_(.+?)_', r'\1', text)
-    return text
+ЦВЕТОКОРРЕКЦИЯ:
+[тон, насыщенность, характер обработки]
+
+ШРИФТ И ТИТРЫ:
+[стиль текста на экране, цвет, размер, анимация]
+
+ПЕРЕХОДЫ:
+[как переходить между сценами]
+
+Без звёздочек и решёток. На русском."""
+
+VIDEO_PROMPT_SYSTEM = """You are an expert at writing Kling AI video generation prompts.
+
+Given a scene description, create a precise English prompt.
+IMPORTANT: Do NOT include any text overlays, titles, or written words in the prompt — only visual action.
+Include: exact camera angle, movement, lighting, subject details, atmosphere, color mood.
+Be specific and cinematic. Max 100 words. Return ONLY the prompt."""
 
 
-async def claude_request(messages: list, system: str, max_tokens: int = 1200) -> str:
+def strip_md(text: str) -> str:
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\*(.+?)\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'#{1,6}\s*', '', text)
+    text = re.sub(r'__(.+?)__', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'_(.+?)_', r'\1', text, flags=re.DOTALL)
+    return text.strip()
+
+
+async def claude_call(messages: list, system: str, max_tokens: int = 1500) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "https://api.anthropic.com/v1/messages",
@@ -101,17 +108,30 @@ async def claude_request(messages: list, system: str, max_tokens: int = 1200) ->
             }
         ) as resp:
             data = await resp.json()
-            return data["content"][0]["text"]
+            return strip_md(data["content"][0]["text"])
 
 
-async def claude_chat(user_id: int, message: str) -> str:
+user_histories = {}   # chat history per user
+user_states = {}      # production state per user
+
+
+def get_state(user_id: int) -> dict:
+    if user_id not in user_states:
+        user_states[user_id] = {}
+    return user_states[user_id]
+
+
+def get_history(user_id: int) -> list:
     if user_id not in user_histories:
         user_histories[user_id] = []
-    user_histories[user_id].append({"role": "user", "content": message})
-    history = user_histories[user_id][-20:]
-    reply = await claude_request(history, SYSTEM_PROMPT)
-    reply = strip_markdown(reply)
-    user_histories[user_id].append({"role": "assistant", "content": reply})
+    return user_histories[user_id]
+
+
+async def chat(user_id: int, message: str) -> str:
+    history = get_history(user_id)
+    history.append({"role": "user", "content": message})
+    reply = await claude_call(history[-20:], SYSTEM_PROMPT)
+    history.append({"role": "assistant", "content": reply})
     return reply
 
 
@@ -131,26 +151,17 @@ async def transcribe_voice(file_path: str) -> str:
     return ""
 
 
-async def generate_video_prompt(description: str) -> str:
-    return await claude_request(
-        [{"role": "user", "content": description}],
-        VIDEO_PROMPT_SYSTEM,
-        max_tokens=200
-    )
-
-
-async def generate_video(prompt: str, duration: str = "5", ratio: str = "9:16") -> str:
+async def generate_video(prompt: str, ratio: str = "9:16") -> str:
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video",
             headers={"Content-Type": "application/json", "Authorization": f"Key {FAL_KEY}"},
-            json={"prompt": prompt, "duration": duration, "aspect_ratio": ratio}
+            json={"prompt": prompt, "duration": "5", "aspect_ratio": ratio}
         ) as resp:
             if not resp.ok:
                 err = await resp.json()
                 raise Exception(err.get("detail", "Ошибка fal.ai"))
-            data = await resp.json()
-            request_id = data["request_id"]
+            request_id = (await resp.json())["request_id"]
 
         for _ in range(72):
             await asyncio.sleep(5)
@@ -163,20 +174,217 @@ async def generate_video(prompt: str, duration: str = "5", ratio: str = "9:16") 
                     return result["video"]["url"]
                 if result.get("status") == "FAILED":
                     raise Exception("Генерация не удалась")
-        raise Exception("Время ожидания истекло")
+    raise Exception("Время ожидания истекло")
 
 
-async def send_long(update: Update, text: str):
-    text = strip_markdown(text)
+async def send(update: Update, text: str, reply_markup=None):
+    text = strip_md(text)
     msg = update.effective_message
     if len(text) > 4096:
-        for i in range(0, len(text), 4096):
-            await msg.reply_text(text[i:i+4096])
+        parts = [text[i:i+4096] for i in range(0, len(text), 4096)]
+        for i, part in enumerate(parts):
+            if i == len(parts) - 1 and reply_markup:
+                await msg.reply_text(part, reply_markup=reply_markup)
+            else:
+                await msg.reply_text(part)
     else:
-        await msg.reply_text(text)
+        await msg.reply_text(text, reply_markup=reply_markup)
 
 
-# ── COMMANDS ──
+# ── PRODUCTION FLOW ──
+
+async def start_production(update: Update, brief: str, user_id: int):
+    """Step 1: Generate scenario broken into scenes"""
+    state = get_state(user_id)
+    state["brief"] = brief
+    state["mode"] = "awaiting_scenario_approval"
+
+    await update.effective_message.reply_text("Генерирую сценарий по сценам... ✍️")
+    await update.effective_message.chat.send_action(ChatAction.TYPING)
+
+    scenario = await claude_call(
+        [{"role": "user", "content": f"Создай сценарий для видео: {brief}"}],
+        SCENARIO_SYSTEM,
+        max_tokens=2000
+    )
+
+    state["scenario"] = scenario
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Одобряю, к дизайну!", callback_data="approve_scenario")],
+        [InlineKeyboardButton("✏️ Внести правки", callback_data="edit_scenario")],
+    ]
+    await send(update,
+        f"Вот сценарий по сценам 🎬\n\n{scenario}\n\n"
+        f"Как тебе? Можем сразу перейти к визуальному дизайну или внесёшь правки?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_design(update: Update, user_id: int):
+    """Step 2: Generate visual design document"""
+    state = get_state(user_id)
+    state["mode"] = "awaiting_design_approval"
+
+    await update.effective_message.reply_text("Разрабатываю визуальный стиль... 🎨")
+    await update.effective_message.chat.send_action(ChatAction.TYPING)
+
+    design = await claude_call(
+        [{"role": "user", "content": f"Создай визуальный дизайн для видео: {state['brief']}\n\nСценарий: {state['scenario']}"}],
+        DESIGN_SYSTEM,
+        max_tokens=1000
+    )
+
+    state["design"] = design
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Отлично, начинаем съёмку!", callback_data="approve_design")],
+        [InlineKeyboardButton("✏️ Изменить стиль", callback_data="edit_design")],
+    ]
+    await send(update,
+        f"Визуальный стиль 🎨\n\n{design}\n\nВсё ок? Или хочешь что-то изменить?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_scene(update: Update, user_id: int):
+    """Step 3+: Show current scene and offer to generate video"""
+    state = get_state(user_id)
+    scenes = state.get("scenes", [])
+    current = state.get("current_scene", 0)
+
+    if current >= len(scenes):
+        await wrap_up(update, user_id)
+        return
+
+    scene = scenes[current]
+    state["mode"] = "awaiting_scene_approval"
+
+    keyboard = [
+        [InlineKeyboardButton("🎥 Генерировать эту сцену", callback_data="gen_scene")],
+        [InlineKeyboardButton("✏️ Изменить сцену", callback_data="edit_scene")],
+        [InlineKeyboardButton("⏭ Пропустить сцену", callback_data="skip_scene")],
+    ]
+
+    await send(update,
+        f"Сцена {current + 1} из {len(scenes)} 🎬\n\n"
+        f"{scene['description']}\n\n"
+        f"———\n"
+        f"📝 ТЕКСТ НА ЭКРАНЕ:\n{scene.get('text_overlay', '—')}\n\n"
+        f"🎙 ОЗВУЧКА:\n{scene.get('voiceover', '—')}\n\n"
+        f"Генерируем эту сцену или сначала внесёшь правки?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def parse_scenes(scenario: str) -> list:
+    """Parse scenario text into list of scene dicts"""
+    parse_prompt = f"""Из этого сценария извлеки каждую сцену и верни в формате JSON.
+Для каждой сцены:
+- "description": только визуальное описание (что в кадре, движение камеры, свет) — БЕЗ текста и озвучки
+- "text_overlay": текст который должен появиться на экране (или "нет")
+- "voiceover": что говорится за кадром или в кадре (или "нет")
+- "duration": длительность в секундах (число)
+
+Верни ТОЛЬКО валидный JSON массив, без пояснений:
+[{{"description":"...","text_overlay":"...","voiceover":"...","duration":5}}, ...]
+
+Сценарий:
+{scenario}"""
+
+    result = await claude_call(
+        [{"role": "user", "content": parse_prompt}],
+        "Ты парсишь сценарий в JSON. Возвращай ТОЛЬКО валидный JSON без markdown, без пояснений.",
+        max_tokens=2000
+    )
+
+    # Clean and parse JSON
+    result = result.strip()
+    result = re.sub(r'^```json\s*', '', result)
+    result = re.sub(r'^```\s*', '', result)
+    result = re.sub(r'\s*```$', '', result)
+
+    import json
+    try:
+        return json.loads(result)
+    except Exception as e:
+        logger.error(f"JSON parse error: {e}\nRaw: {result}")
+        return []
+
+
+async def generate_scene_video(update: Update, user_id: int):
+    """Generate video for current scene"""
+    state = get_state(user_id)
+    scenes = state.get("scenes", [])
+    current = state.get("current_scene", 0)
+    scene = scenes[current]
+    design = state.get("design", "")
+
+    await update.effective_message.reply_text("Генерирую сцену... 1-3 минуты, не закрывай чат ⏳🎬")
+
+    # Build prompt from scene + design
+    prompt_input = f"Scene: {scene['description']}\nVisual style: {design[:300]}"
+
+    video_prompt = await claude_call(
+        [{"role": "user", "content": prompt_input}],
+        VIDEO_PROMPT_SYSTEM,
+        max_tokens=150
+    )
+
+    try:
+        ratio = state.get("ratio", "9:16")
+        url = await generate_video(video_prompt, ratio=ratio)
+
+        keyboard = [
+            [InlineKeyboardButton("✅ Отлично, следующая сцена!", callback_data="next_scene")],
+            [InlineKeyboardButton("🔄 Перегенерировать", callback_data="regen_scene")],
+            [InlineKeyboardButton("✏️ Изменить и перегенерировать", callback_data="edit_regen_scene")],
+        ]
+
+        await update.effective_message.reply_video(
+            url,
+            caption=f"Сцена {current + 1} готова! 🎬\n\n"
+                    f"📝 Текст на экране: {scene.get('text_overlay','—')}\n"
+                    f"🎙 Озвучка: {scene.get('voiceover','—')}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        state["last_video_prompt"] = video_prompt
+    except Exception as e:
+        await update.effective_message.reply_text(f"Ошибка генерации: {e}\n\nПопробуем ещё раз?")
+
+
+async def wrap_up(update: Update, user_id: int):
+    """All scenes done"""
+    state = get_state(user_id)
+    scenario = state.get("scenario", "")
+
+    # Extract hashtags and music from scenario
+    hashtags = ""
+    music = ""
+    for line in scenario.split("\n"):
+        if "ХЭШТЕГИ" in line.upper():
+            hashtags = line.replace("ХЭШТЕГИ:", "").strip()
+        if "МУЗЫКА" in line.upper():
+            music = line.replace("МУЗЫКА:", "").strip()
+
+    state["mode"] = None
+
+    keyboard = [
+        [InlineKeyboardButton("🎬 Создать новое видео", callback_data="new_video")],
+        [InlineKeyboardButton("💡 Придумать идею", callback_data="idea")],
+    ]
+
+    await send(update,
+        "Все сцены готовы! 🎉\n\n"
+        "Теперь у тебя есть все клипы для монтажа.\n\n"
+        f"#️⃣ Хэштеги: {hashtags}\n\n"
+        f"🎵 Музыка: {music}\n\n"
+        "Удачного монтажа! Если нужно переснять какую-то сцену — просто скажи 💪",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# ── COMMAND HANDLERS ──
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -185,17 +393,21 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name or "красотка"
 
     keyboard = [
+        [InlineKeyboardButton("🎬 Создать видео", callback_data="new_video")],
         [InlineKeyboardButton("💡 Идея для тренда", callback_data="idea")],
-        [InlineKeyboardButton("🎬 Сценарий TikTok", callback_data="script_tiktok"),
-         InlineKeyboardButton("📱 Сценарий Reels", callback_data="script_reels")],
-        [InlineKeyboardButton("🎥 Сгенерировать видео", callback_data="video_menu")],
         [InlineKeyboardButton("#️⃣ Хэштеги", callback_data="hashtags")],
     ]
     await update.message.reply_text(
         f"Привет, {name}! 💄\n\n"
-        f"Я GLAM AI — твой личный агент по бьюти-контенту. "
-        f"Помогу придумать идеи, написать сценарии и создать видео через ИИ.\n\n"
-        f"Можешь написать текстом, отправить голосовое 🎙 или выбрать из меню:",
+        f"Я GLAM AI — твой бьюти-продюсер.\n\n"
+        f"Работаем так:\n"
+        f"1️⃣ Ты описываешь идею\n"
+        f"2️⃣ Я пишу сценарий по сценам\n"
+        f"3️⃣ Согласовываем визуальный стиль\n"
+        f"4️⃣ Генерируем каждую сцену отдельно\n"
+        f"5️⃣ Текст и озвучку получаешь отдельно\n"
+        f"6️⃣ Монтируешь сам!\n\n"
+        f"Что делаем?",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -204,181 +416,220 @@ async def reset_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_histories[user_id] = []
     user_states[user_id] = {}
-    await update.message.reply_text("Начинаем с чистого листа! С чего начнём? 😊")
+    await update.message.reply_text("Начинаем с чистого листа! 😊")
 
 
-async def video_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in user_states:
-        user_states[user_id] = {}
-    user_states[user_id]["mode"] = "video_clarify"
-    user_states[user_id]["video_answers"] = []
-    await update.message.reply_text(VIDEO_CLARIFY_QUESTIONS)
-
-
-# ── BUTTONS ──
+# ── BUTTON HANDLER ──
 
 async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-
-    if user_id not in user_states:
-        user_states[user_id] = {}
-    if user_id not in user_histories:
-        user_histories[user_id] = []
-
+    state = get_state(user_id)
     data = query.data
 
-    # Quick content requests — ask clarifying questions first
-    content_requests = {
-        "idea": "Хочу вирусную идею для бьюти-видео",
-        "script_tiktok": "Напиши сценарий для TikTok",
-        "script_reels": "Напиши сценарий для Instagram Reels",
-        "hashtags": "Подбери хэштеги для бьюти-контента",
-    }
-
-    video_presets = {
-        "vid_highlighter": "Close-up beauty shot of a model applying shimmery highlighter on cheekbones, soft studio lighting, golden hour glow, slow motion, 4K cinematic, bokeh background, luxury aesthetic, warm tones",
-        "vid_lipstick": "Extreme close-up of glossy lips with red lipstick application, macro lens, soft pink background, gentle lighting, slow dramatic reveal, high-end beauty commercial style",
-        "vid_skincare": "Elegant skincare routine, woman applying serum with glowing dewy skin, clean minimalist bathroom, morning light, slow motion drops, luxury spa aesthetic, 4K cinematic",
-        "vid_eyeliner": "Close-up eye makeup application, precise eyeliner stroke, dramatic lashes, soft warm studio lighting, shallow depth of field, beauty tutorial, high definition",
-    }
-
-    if data in content_requests:
-        # Always ask 3 questions before generating content
-        user_states[user_id]["mode"] = "content_clarify"
-        user_states[user_id]["content_request"] = content_requests[data]
-        user_states[user_id]["clarify_answers"] = []
+    if data == "new_video":
+        state["mode"] = "clarify_video"
+        state["clarify_answers"] = []
         await query.message.reply_text(
-            "Прежде чем начну — хочу сделать это максимально точно под тебя 🎯\n\n"
-            "Ответь на 3 вопроса:\n\n"
-            "1️⃣ Для кого этот контент? Опиши аудиторию (возраст, пол, интересы)\n\n"
-            "2️⃣ Какая цель? (продажи, охваты, подписчики, узнаваемость бренда)\n\n"
-            "3️⃣ Какой тон? (экспертный, дружеский, с юмором, вдохновляющий)\n\n"
+            "Отлично, делаем видео! 🎬\n\n"
+            "Чтобы сценарий попал точно в цель — ответь на 3 вопроса:\n\n"
+            "1️⃣ Для кого снимаем? (возраст, пол, интересы аудитории)\n\n"
+            "2️⃣ Какая цель? (продажи, охваты, подписчики)\n\n"
+            "3️⃣ Какой тон? (экспертный, дружеский, с юмором)\n\n"
             "Можешь ответить на все три сразу 👇"
         )
 
-    elif data == "video_menu":
-        keyboard = [
-            [InlineKeyboardButton("✨ Хайлайтер", callback_data="vid_highlighter"),
-             InlineKeyboardButton("💄 Помада", callback_data="vid_lipstick")],
-            [InlineKeyboardButton("🌸 Скинкер", callback_data="vid_skincare"),
-             InlineKeyboardButton("👁️ Стрелки", callback_data="vid_eyeliner")],
-            [InlineKeyboardButton("✍️ Своя идея", callback_data="vid_custom")],
-        ]
+    elif data == "idea":
+        state["mode"] = "clarify_idea"
+        state["clarify_answers"] = []
         await query.message.reply_text(
-            "Давай создадим видео! 🎥\n\nВыбери пресет или расскажи свою идею:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            "Придумаем крутую идею! 💡\n\n"
+            "3 быстрых вопроса:\n\n"
+            "1️⃣ Какая тема или продукт?\n\n"
+            "2️⃣ Для какой платформы? (TikTok, Reels, Shorts)\n\n"
+            "3️⃣ Кто твоя аудитория?\n\n"
+            "Пиши всё одним сообщением 👇"
         )
 
-    elif data in video_presets:
-        await query.message.reply_text("Запускаю генерацию — займёт 1-3 минуты ⏳✨")
-        try:
-            url = await generate_video(video_presets[data])
-            await query.message.reply_video(url, caption="Готово! Скачивай и публикуй 🚀")
-        except Exception as e:
-            await query.message.reply_text(f"Упс, не получилось: {e}\n\nПопробуй чуть позже.")
+    elif data == "hashtags":
+        state["mode"] = "clarify_hashtags"
+        await query.message.reply_text(
+            "Подберём хэштеги! #️⃣\n\n"
+            "Опиши тему видео и платформу (TikTok/Instagram/YouTube) 👇"
+        )
 
-    elif data == "vid_custom":
-        user_states[user_id]["mode"] = "video_clarify"
-        user_states[user_id]["video_answers"] = []
-        await query.message.reply_text(VIDEO_CLARIFY_QUESTIONS)
+    elif data == "approve_scenario":
+        await show_design(query, user_id)
+
+    elif data == "edit_scenario":
+        state["mode"] = "editing_scenario"
+        await query.message.reply_text("Какие правки внести в сценарий? Опиши 👇")
+
+    elif data == "approve_design":
+        await query.message.reply_text("Разбиваю сценарий на сцены... ✂️")
+        scenes = await parse_scenes(state.get("scenario", ""))
+        if not scenes:
+            await query.message.reply_text("Не удалось разобрать сцены 😕 Попробуй создать заново /start")
+            return
+        state["scenes"] = scenes
+        state["current_scene"] = 0
+        await send(query,
+            f"Отлично! Сценарий разбит на {len(scenes)} сцен.\n\n"
+            f"Буду присылать каждую сцену с описанием, текстом и озвучкой — ты решаешь генерировать или нет.\n\n"
+            f"Поехали! 🚀"
+        )
+        await show_scene(query, user_id)
+
+    elif data == "edit_design":
+        state["mode"] = "editing_design"
+        await query.message.reply_text("Что изменить в визуальном стиле? 👇")
+
+    elif data == "gen_scene":
+        await generate_scene_video(query, user_id)
+
+    elif data == "skip_scene":
+        state["current_scene"] = state.get("current_scene", 0) + 1
+        await show_scene(query, user_id)
+
+    elif data == "edit_scene":
+        state["mode"] = "editing_scene"
+        await query.message.reply_text("Что изменить в этой сцене? 👇")
+
+    elif data == "next_scene":
+        state["current_scene"] = state.get("current_scene", 0) + 1
+        await show_scene(query, user_id)
+
+    elif data == "regen_scene":
+        await generate_scene_video(query, user_id)
+
+    elif data == "edit_regen_scene":
+        state["mode"] = "editing_scene"
+        await query.message.reply_text("Что изменить перед перегенерацией? 👇")
 
 
-# ── VOICE ──
+# ── VOICE HANDLER ──
 
 async def handle_voice(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     await update.message.reply_text("Слушаю... 🎙")
-    await update.message.chat.send_action(ChatAction.TYPING)
-
     try:
         tg_file = await ctx.bot.get_file(update.message.voice.file_id)
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             await tg_file.download_to_drive(tmp.name)
-            tmp_path = tmp.name
-
-        text = await transcribe_voice(tmp_path)
-
+            text = await transcribe_voice(tmp.name)
         if not text:
-            await update.message.reply_text("Не удалось распознать 😕 Попробуй написать текстом.")
+            await update.message.reply_text("Не удалось распознать 😕 Напиши текстом.")
             return
-
-        await update.message.reply_text(f"Услышала: «{text}»\n\nОтвечаю... 💭")
+        await update.message.reply_text(f"Услышал: «{text}»\n\nОтвечаю... 💭")
         await process_message(update, ctx, user_id, text)
-
     except Exception as e:
         logger.error(f"Voice error: {e}")
-        await update.message.reply_text("Не получилось обработать голосовое 😕 Напиши текстом!")
+        await update.message.reply_text("Не получилось обработать голосовое 😕")
 
 
-# ── MAIN PROCESSOR ──
+# ── MAIN MESSAGE PROCESSOR ──
 
 async def process_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user_id: int, text: str):
-    if user_id not in user_states:
-        user_states[user_id] = {}
-    if user_id not in user_histories:
-        user_histories[user_id] = []
-
-    state = user_states[user_id]
+    state = get_state(user_id)
     mode = state.get("mode")
 
-    # ── Video clarification flow ──
-    if mode == "video_clarify":
-        answers = state.get("video_answers", [])
-        answers.append(text)
-        state["video_answers"] = answers
+    await update.effective_message.chat.send_action(ChatAction.TYPING)
 
-        if len(answers) >= 3:
-            state["mode"] = None
-            state["video_answers"] = []
-            combined = " / ".join(answers)
-            await update.effective_message.reply_text(
-                "Отлично, всё понятно! Создаю промпт и запускаю генерацию...\n"
-                "Это займёт 1-3 минуты ⏳🎬"
-            )
-            try:
-                prompt = await generate_video_prompt(combined)
-                ratio = "16:9" if any(w in text.lower() for w in ["youtube", "горизонт", "широк"]) else "9:16"
-                url = await generate_video(prompt, ratio=ratio)
-                await update.effective_message.reply_video(url, caption="Вот твоё видео! 🎬✨")
-            except Exception as e:
-                await update.effective_message.reply_text(f"Упс, ошибка генерации: {e}\n\nПопробуй ещё раз.")
-        else:
-            remaining = 3 - len(answers)
-            await update.effective_message.reply_text(
-                f"Записала! Осталось ответить на {remaining} {'вопрос' if remaining == 1 else 'вопроса'} выше 👆"
-            )
-        return
-
-    # ── Content clarification flow ──
-    if mode == "content_clarify":
+    # ── Clarification flows ──
+    if mode == "clarify_video":
         answers = state.get("clarify_answers", [])
         answers.append(text)
         state["clarify_answers"] = answers
 
         if len(answers) >= 1:
-            # Got answers, now generate content with context
             state["mode"] = None
-            original = state.get("content_request", "создай контент")
-            context = f"{original}. Детали об аудитории и целях: {' / '.join(answers)}"
-            await update.effective_message.chat.send_action(ChatAction.TYPING)
-            try:
-                reply = await claude_chat(user_id, context)
-                await send_long(update, reply)
-            except Exception as e:
-                await update.effective_message.reply_text(f"Что-то пошло не так: {e}")
+            brief = state.get("brief_topic", "") + " / ".join(answers)
+            await start_production(update, brief, user_id)
         return
 
-    # ── Regular chat ──
-    await update.effective_message.chat.send_action(ChatAction.TYPING)
-    try:
-        reply = await claude_chat(user_id, text)
-        await send_long(update, reply)
-    except Exception as e:
-        logger.error(f"Chat error: {e}")
-        await update.effective_message.reply_text("Что-то пошло не так, попробуй ещё раз 🙏")
+    if mode in ("clarify_idea", "clarify_hashtags"):
+        state["mode"] = None
+        reply = await chat(user_id, text)
+        await send(update, reply)
+        return
+
+    # ── Editing flows ──
+    if mode == "editing_scenario":
+        state["mode"] = None
+        await update.effective_message.reply_text("Вношу правки в сценарий... ✍️")
+        new_scenario = await claude_call(
+            [{"role": "user", "content": f"Исходный сценарий:\n{state.get('scenario','')}\n\nПравки: {text}\n\nПерепиши сценарий с учётом правок."}],
+            SCENARIO_SYSTEM,
+            max_tokens=2000
+        )
+        state["scenario"] = new_scenario
+        keyboard = [
+            [InlineKeyboardButton("✅ Одобряю!", callback_data="approve_scenario")],
+            [InlineKeyboardButton("✏️ Ещё правки", callback_data="edit_scenario")],
+        ]
+        await send(update, f"Обновлённый сценарий:\n\n{new_scenario}", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if mode == "editing_design":
+        state["mode"] = None
+        await update.effective_message.reply_text("Обновляю стиль... 🎨")
+        new_design = await claude_call(
+            [{"role": "user", "content": f"Исходный стиль:\n{state.get('design','')}\n\nПравки: {text}\n\nОбнови."}],
+            DESIGN_SYSTEM,
+            max_tokens=1000
+        )
+        state["design"] = new_design
+        keyboard = [
+            [InlineKeyboardButton("✅ Отлично!", callback_data="approve_design")],
+            [InlineKeyboardButton("✏️ Ещё правки", callback_data="edit_design")],
+        ]
+        await send(update, f"Обновлённый стиль:\n\n{new_design}", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if mode == "editing_scene":
+        state["mode"] = None
+        current = state.get("current_scene", 0)
+        scenes = state.get("scenes", [])
+        if current < len(scenes):
+            await update.effective_message.reply_text("Обновляю сцену... ✍️")
+            scene = scenes[current]
+            updated = await claude_call(
+                [{"role": "user", "content": f"Сцена: {scene}\nПравки: {text}\nОбнови описание сцены. Верни JSON одной сцены."}],
+                "Обновляй описание сцены. Возвращай ТОЛЬКО JSON объект сцены без пояснений.",
+                max_tokens=500
+            )
+            import json
+            try:
+                updated_clean = re.sub(r'```.*?```', '', updated, flags=re.DOTALL).strip()
+                scenes[current] = json.loads(updated_clean)
+                state["scenes"] = scenes
+            except Exception:
+                pass
+            await generate_scene_video(update, user_id)
+        return
+
+    # ── Default: check if production request ──
+    keywords = ["видео", "сценарий", "снять", "контент", "ролик", "reels", "tiktok", "shorts"]
+    is_production = any(kw in text.lower() for kw in keywords)
+
+    if is_production and not state.get("in_production"):
+        state["mode"] = "clarify_video"
+        state["clarify_answers"] = []
+        state["brief_topic"] = text + " / "
+        await send(update,
+            "Отличная идея! Сделаем это правильно 🎯\n\n"
+            "3 вопроса для точного попадания в аудиторию:\n\n"
+            "1️⃣ Для кого снимаем? (возраст, пол, интересы)\n\n"
+            "2️⃣ Какая цель? (продажи, охваты, подписчики)\n\n"
+            "3️⃣ Какой тон? (экспертный, дружеский, с юмором)\n\n"
+            "Отвечай как удобно — всё сразу или по одному 👇"
+        )
+        return
+
+    # Regular chat
+    reply = await chat(user_id, text)
+    await send(update, reply)
 
 
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -389,7 +640,6 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset_cmd))
-    app.add_handler(CommandHandler("video", video_cmd))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
