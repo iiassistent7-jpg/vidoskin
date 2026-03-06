@@ -363,19 +363,21 @@ async def parse_scenes(scenario: str) -> list:
 
 async def generate_video_with_updates(msg, prompt: str, ratio: str = "9:16") -> str:
     """Generate video and send periodic status updates to keep user informed"""
+    import json as _json  # local import to avoid shadowing by aiohttp json= kwarg
     MODEL = "fal-ai/kling-video/v1.6/standard/text-to-video"
     headers = {"Content-Type": "application/json", "Authorization": f"Key {FAL_KEY}"}
+    payload = _json.dumps({"prompt": prompt, "duration": "5", "aspect_ratio": ratio})
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             f"https://queue.fal.run/{MODEL}",
             headers=headers,
-            json={"prompt": prompt, "duration": "5", "aspect_ratio": ratio}
+            data=payload
         ) as resp:
             if not resp.ok:
                 body = await resp.text()
                 raise Exception(f"Submit failed {resp.status}: {body[:200]}")
-            data = await resp.json(content_type=None)
+            data = _json.loads(await resp.text())
             request_id = data.get("request_id")
             response_url = data.get("response_url", "")
             status_url = data.get("status_url", f"https://queue.fal.run/{MODEL}/requests/{request_id}/status")
@@ -409,7 +411,7 @@ async def generate_video_with_updates(msg, prompt: str, ratio: str = "9:16") -> 
                             clean = line
                             break
                     try:
-                        result = json.loads(clean)
+                        result = _json.loads(clean)
                     except Exception as parse_err:
                         logger.error(f"PARSE FAIL #{attempt} err={parse_err} repr={repr(poll_text[:300])}")
                         continue
@@ -429,7 +431,7 @@ async def generate_video_with_updates(msg, prompt: str, ratio: str = "9:16") -> 
                             final_text = (await res.text()).strip()
                             logger.info(f"Result: {final_text[:400]}")
                             try:
-                                final = json.loads(final_text)
+                                final = _json.loads(final_text)
                             except Exception:
                                 raise Exception(f"Result not JSON: {final_text[:200]}")
                             video_url = (
