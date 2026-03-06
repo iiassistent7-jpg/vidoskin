@@ -78,10 +78,13 @@ DESIGN_SYSTEM = """Ты — арт-директор бьюти-контента.
 
 VIDEO_PROMPT_SYSTEM = """You are an expert at writing Kling AI video generation prompts.
 
-Given a scene description, create a precise English prompt.
-IMPORTANT: Do NOT include any text overlays, titles, or written words in the prompt — only visual action.
-Include: exact camera angle, movement, lighting, subject details, atmosphere, color mood.
-Be specific and cinematic. Max 100 words. Return ONLY the prompt."""
+Given a scene description, create a precise English prompt for VISUAL ACTION ONLY.
+STRICT RULES:
+- NO text, words, letters, titles, subtitles, captions, or overlays of any kind
+- NO signs, labels, or readable elements in the scene
+- ONLY pure visual: camera movement, lighting, people, objects, colors, atmosphere
+Include: exact camera angle, movement, lighting, subject details, color mood.
+Cinematic and specific. Max 80 words. Return ONLY the prompt, nothing else."""
 
 
 def strip_md(text: str) -> str:
@@ -154,34 +157,66 @@ async def transcribe_voice(file_path: str) -> str:
 
 
 async def generate_video(prompt: str, ratio: str = "9:16") -> str:
+    MODEL = "fal-ai/kling-video/v1.6/standard/text-to-video"
+    headers = {"Content-Type": "application/json", "Authorization": f"Key {FAL_KEY}"}
+
     async with aiohttp.ClientSession() as session:
+        # Submit to queue
         async with session.post(
-            "https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video",
-            headers={"Content-Type": "application/json", "Authorization": f"Key {FAL_KEY}"},
+            f"https://queue.fal.run/{MODEL}",
+            headers=headers,
             json={"prompt": prompt, "duration": "5", "aspect_ratio": ratio}
         ) as resp:
             if not resp.ok:
-                err = await resp.json()
-                raise Exception(err.get("detail", "Ошибка fal.ai"))
-            request_id = (await resp.json())["request_id"]
+                body = await resp.text()
+                raise Exception(f"Submit failed {resp.status}: {body[:200]}")
+            data = await resp.json(content_type=None)
+            request_id = data.get("request_id")
+            response_url = data.get("response_url", "")
+            status_url = data.get("status_url", f"https://queue.fal.run/{MODEL}/requests/{request_id}/status")
+            logger.info(f"Submitted video job {request_id}")
 
-        for _ in range(72):
+        # Poll status
+        for attempt in range(80):
             await asyncio.sleep(5)
-            async with session.get(
-                f"https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video/requests/{request_id}",
-                headers={"Authorization": f"Key {FAL_KEY}"}
-            ) as poll:
-                try:
-                    result = await poll.json(content_type=None)
-                except Exception:
-                    text_body = await poll.text()
-                    logger.warning(f"Poll non-JSON response: {text_body[:200]}")
-                    continue
-                if result.get("status") == "COMPLETED" and result.get("video", {}).get("url"):
-                    return result["video"]["url"]
-                if result.get("status") == "FAILED":
-                    raise Exception("Генерация не удалась")
-    raise Exception("Время ожидания истекло")
+            try:
+                async with session.get(status_url, headers={"Authorization": f"Key {FAL_KEY}"}) as poll:
+                    poll_text = await poll.text()
+                    try:
+                        result = json.loads(poll_text)
+                    except Exception:
+                        logger.warning(f"Non-JSON poll #{attempt}: {poll_text[:100]}")
+                        continue
+
+                    status = result.get("status", "")
+                    logger.info(f"Video status #{attempt}: {status}")
+
+                    if status == "COMPLETED":
+                        # Get result via response_url or request_id
+                        result_url = response_url or f"https://queue.fal.run/{MODEL}/requests/{request_id}"
+                        async with session.get(result_url, headers={"Authorization": f"Key {FAL_KEY}"}) as res:
+                            final_text = await res.text()
+                            final = json.loads(final_text)
+                            # Try different response shapes
+                            video_url = (
+                                final.get("video", {}).get("url") or
+                                (final.get("videos") or [{}])[0].get("url") or
+                                final.get("url", "")
+                            )
+                            if video_url:
+                                return video_url
+                            raise Exception(f"No video URL in response: {final_text[:300]}")
+
+                    if status in ("FAILED", "ERROR"):
+                        raise Exception(f"Generation failed: {result.get('error', 'unknown')}")
+
+            except Exception as e:
+                if "failed" in str(e).lower() or "No video" in str(e):
+                    raise
+                logger.warning(f"Poll error #{attempt}: {e}")
+                continue
+
+    raise Exception("Время ожидания истекло (6 минут)")
 
 
 async def send(update: Update, text: str, reply_markup=None):
