@@ -408,17 +408,29 @@ async def generate_video_with_updates(msg, prompt: str, ratio: str = "9:16") -> 
                     logger.info(f"Status #{attempt}: {status}")
 
                     if status == "COMPLETED":
-                        result_url = response_url or f"https://queue.fal.run/{MODEL}/requests/{request_id}"
-                        async with session.get(result_url, headers={"Authorization": f"Key {FAL_KEY}"}) as res:
-                            final = json.loads(await res.text())
+                        # Try response_url from status, then from initial submit, then construct
+                        res_url = (
+                            result.get("response_url") or
+                            response_url or
+                            f"https://queue.fal.run/{MODEL}/requests/{request_id}"
+                        )
+                        logger.info(f"Fetching result from: {res_url}")
+                        async with session.get(res_url, headers={"Authorization": f"Key {FAL_KEY}"}) as res:
+                            final_text = await res.text()
+                            logger.info(f"Result response: {final_text[:300]}")
+                            try:
+                                final = json.loads(final_text)
+                            except Exception:
+                                raise Exception(f"Result not JSON: {final_text[:200]}")
                             video_url = (
                                 final.get("video", {}).get("url") or
                                 (final.get("videos") or [{}])[0].get("url") or
                                 final.get("url", "")
                             )
                             if video_url:
+                                logger.info(f"Got video URL: {video_url[:80]}")
                                 return video_url
-                            raise Exception(f"No video URL: {str(final)[:200]}")
+                            raise Exception(f"No video URL in: {str(final)[:300]}")
 
                     if status in ("FAILED", "ERROR"):
                         raise Exception(f"Kling AI: {result.get('error', 'generation failed')}")
@@ -765,6 +777,15 @@ async def process_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user_i
         return
 
     # ── Default: check if production request ──
+    # If user is in the middle of approval flow — remind them to use buttons
+    approval_modes = ["awaiting_scenario_approval", "awaiting_design_approval", "awaiting_scene_approval"]
+    if mode in approval_modes:
+        await update.effective_message.reply_text(
+            "Используй кнопки выше для продолжения. "
+            "Хочешь внести правки - нажми на кнопку Внести правки."
+        )
+        return
+
     keywords = ["видео", "сценарий", "снять", "ролик", "reels", "tiktok", "shorts"]
     is_production = any(kw in text.lower() for kw in keywords)
 
