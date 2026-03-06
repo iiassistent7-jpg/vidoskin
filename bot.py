@@ -396,11 +396,22 @@ async def generate_video_with_updates(msg, prompt: str, ratio: str = "9:16") -> 
             try:
                 async with session.get(status_url, headers={"Authorization": f"Key {FAL_KEY}"}) as poll:
                     poll_text = await poll.text()
-                    # Parse status response
+                    # Parse status response - fal may return SSE format "data: {...}"
+                    clean = poll_text.strip()
+                    if clean.startswith("data:"):
+                        clean = clean[5:].strip()
+                    # Take only last complete JSON line if multiple
+                    for line in reversed(clean.split("\n")):
+                        line = line.strip()
+                        if line.startswith("data:"):
+                            line = line[5:].strip()
+                        if line.startswith("{"):
+                            clean = line
+                            break
                     try:
-                        result = json.loads(poll_text.strip())
+                        result = json.loads(clean)
                     except Exception as parse_err:
-                        logger.error(f"PARSE FAIL #{attempt} err={parse_err} len={len(poll_text)} repr={repr(poll_text[:300])}")
+                        logger.error(f"PARSE FAIL #{attempt} err={parse_err} repr={repr(poll_text[:300])}")
                         continue
 
                     status = result.get("status", "")
