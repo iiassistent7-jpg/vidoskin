@@ -74,7 +74,7 @@ user_histories = {}
 user_states = {}
 
 
-def strip_markdown(text: str) -> str):
+def strip_markdown(text: str) -> str:
     """Remove markdown formatting that Telegram shows as raw symbols"""
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*', r'\1', text)
