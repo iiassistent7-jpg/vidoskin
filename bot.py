@@ -171,7 +171,12 @@ async def generate_video(prompt: str, ratio: str = "9:16") -> str:
                 f"https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video/requests/{request_id}",
                 headers={"Authorization": f"Key {FAL_KEY}"}
             ) as poll:
-                result = await poll.json()
+                try:
+                    result = await poll.json(content_type=None)
+                except Exception:
+                    text_body = await poll.text()
+                    logger.warning(f"Poll non-JSON response: {text_body[:200]}")
+                    continue
                 if result.get("status") == "COMPLETED" and result.get("video", {}).get("url"):
                     return result["video"]["url"]
                 if result.get("status") == "FAILED":
@@ -444,15 +449,10 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data == "new_video":
-        state["mode"] = "clarify_video"
-        state["clarify_answers"] = []
+        state["mode"] = "ask_topic"
         await query.message.reply_text(
             "Отлично, делаем видео! 🎬\n\n"
-            "Чтобы сценарий попал точно в цель — ответь на 3 вопроса:\n\n"
-            "1️⃣ Для кого снимаем? (возраст, пол, интересы аудитории)\n\n"
-            "2️⃣ Какая цель? (продажи, охваты, подписчики)\n\n"
-            "3️⃣ Какой тон? (экспертный, дружеский, с юмором)\n\n"
-            "Можешь ответить на все три сразу 👇"
+            "О чём будет видео? Опиши тему, продукт или услугу 👇"
         )
 
     elif data == "idea":
@@ -554,19 +554,43 @@ async def process_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user_i
     await update.effective_message.chat.send_action(ChatAction.TYPING)
 
     # ── Clarification flows ──
+    if mode == "ask_topic":
+        state["mode"] = "clarify_video"
+        state["clarify_answers"] = []
+        state["brief_topic"] = text + " / "
+        await update.effective_message.reply_text(
+            "Отлично! Теперь 3 быстрых вопроса:\n\n"
+            "1️⃣ Для кого снимаем? (возраст, пол, интересы)\n"
+            "2️⃣ Какая цель? (продажи, охваты, подписчики)\n"
+            "3️⃣ Какой тон? (экспертный, дружеский, с юмором)\n\n"
+            "Можешь ответить на все три сразу одним сообщением 👇"
+        )
+        return
+
     if mode == "clarify_video":
+        # Accept all answers in one message OR collect one by one
         answers = state.get("clarify_answers", [])
         answers.append(text)
         state["clarify_answers"] = answers
 
-        if len(answers) >= 3:
+        # If message contains numbered answers (1. / 1) / 1️⃣) treat as all 3
+        import re as _re
+        has_multiple = bool(_re.search(r'(1[.\)️⃣]|во-первых|аудитор)', text, _re.IGNORECASE))
+
+        if len(answers) >= 3 or has_multiple:
             state["mode"] = None
             brief = state.get("brief_topic", "") + " / ".join(answers)
             await start_production(update, brief, user_id)
         elif len(answers) == 1:
-            await update.effective_message.reply_text("Записал! Теперь ответь на вопросы 2 и 3 👆")
+            await update.effective_message.reply_text(
+                "Записал! Теперь ответь на вопросы 2 и 3:\n\n"
+                "2️⃣ Какая цель? (продажи, охваты, подписчики)\n"
+                "3️⃣ Какой тон? (экспертный, дружеский, с юмором)"
+            )
         elif len(answers) == 2:
-            await update.effective_message.reply_text("Отлично! И последнее — какой тон? (экспертный, дружеский, с юмором) 👇")
+            await update.effective_message.reply_text(
+                "Отлично! И последнее — какой тон?\n(экспертный, дружеский, с юмором) 👇"
+            )
         return
 
     if mode in ("clarify_idea", "clarify_hashtags"):
@@ -631,20 +655,15 @@ async def process_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user_i
         return
 
     # ── Default: check if production request ──
-    keywords = ["видео", "сценарий", "снять", "контент", "ролик", "reels", "tiktok", "shorts"]
+    keywords = ["видео", "сценарий", "снять", "ролик", "reels", "tiktok", "shorts"]
     is_production = any(kw in text.lower() for kw in keywords)
 
-    if is_production and not state.get("in_production"):
-        state["mode"] = "clarify_video"
-        state["clarify_answers"] = []
+    if is_production:
+        state["mode"] = "ask_topic"
         state["brief_topic"] = text + " / "
         await send(update,
-            "Отличная идея! Сделаем это правильно 🎯\n\n"
-            "3 вопроса для точного попадания в аудиторию:\n\n"
-            "1️⃣ Для кого снимаем? (возраст, пол, интересы)\n\n"
-            "2️⃣ Какая цель? (продажи, охваты, подписчики)\n\n"
-            "3️⃣ Какой тон? (экспертный, дружеский, с юмором)\n\n"
-            "Отвечай как удобно — всё сразу или по одному 👇"
+            "Отличная идея! 🎯\n\n"
+            "Уточни тему — о чём конкретно видео? (продукт, услуга, тема) 👇"
         )
         return
 
